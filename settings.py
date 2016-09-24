@@ -27,3 +27,23 @@ METEO_WEEK_FILENAME = os.path.join(BASE_DATA_PATH,
 # Name of the temperature
 TEMP_FILENAME = os.path.join(BASE_DATA_PATH,
                                     '00_Common/02_Meteo/TEMP_MAG_2016.csv')
+
+
+# Global identifier of the dijon store
+DIJON_ID = 3020470420000
+
+# Global identifier of the caen store
+CAEN_ID = 3021080300300
+
+
+TRANSACTION_IDX = {
+
+    "EAN": 0
+}
+
+
+METEO_DAY_IDX = {
+
+    "EAN": 3,
+    "DAY": 0
+}
