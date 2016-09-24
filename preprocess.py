@@ -5,9 +5,7 @@ import pandas as pd
 import numpy as np
 import settings
 from workalendar.europe import France
-import datetime
 
-import sortedcontainers as sc
 
 
 
@@ -86,8 +84,11 @@ def get_volume_product_on_date(product_barcode, date, store_id, transactions):
                         (transactions['TRX_DATETIME'] >= pd.to_datetime(date).date())
                         & (transactions['TRX_DATETIME'] < (pd.to_datetime(date) + pd.DateOffset(1)))]
 
-    return {"price": np.sum(transactions_day['SAL_AMT_WTAX']),
-            "weight": np.sum(transactions_day['SAL_UNIT_QTY_WEIGHT'])}
+    if transactions_day.empty:
+        return None
+
+    return {"price": np.sum(transactions_day['SAL_AMT_WTAX'].values),
+            "weight": np.sum(transactions_day['SAL_UNIT_QTY_WEIGHT'].values)}
 
 
 
@@ -101,14 +102,14 @@ def generate_day_type(date):
     if cal.is_holiday(date):
         # If Mon-Friday
         if date.weekday() in range(5):
-            return 0
+            return 0.
         else:
-            return 1
+            return 1.
     else:
         if date.weekday() in range(5):
-            return 1
+            return 1.
         else:
-            return 0
+            return 0.
 
 
 
@@ -142,7 +143,7 @@ def generate_weather_conditions(temperature, temp_type):
             return 0
 
 
-def generate_training_testing_dataset(store_id, transactions, meteo_day):
+def generate_training_testing_dataset(store_id, transactions, meteo_day, max_days=2500):
     """
     This function generates the training and testing data
     """
@@ -164,40 +165,112 @@ def generate_training_testing_dataset(store_id, transactions, meteo_day):
 
         print(day)
 
+        if day > max_days:
+            break
+
         date = min_date + pd.DateOffset(day)
+
+
 
         # Get the weather of the date
         weather = get_weather_on_date(date, meteo_day, store_id).head(n=1)
+
+        # If the weather is empty we skip this
+        if weather.empty:
+            continue
         for product_barcode in products_barcode:
 
             # Get the volume
             volume = get_volume_product_on_date(product_barcode, date, store_id, transactions)
+
+            if volume is None:
+                break
+
             day_type = generate_day_type(date)
 
 
 
             # Generating complex features based on the simpler one
 
-            # yesterday = date - pd.DateOffset(1)
-            # two_days_ago = date - pd.DateOffset(2)
-            # day_type_yesterday = generate_day_type(yesterday)
-            # day_type_2days_ago = generate_day_type(two_days_ago)
+            yesterday = date - pd.DateOffset(1)
+            two_days_ago = date - pd.DateOffset(2)
+            one_week_ago = date - pd.DateOffset(7)
+
+            day_type_yesterday = generate_day_type(yesterday)
+            day_type_2days_ago = generate_day_type(two_days_ago)
             #
-            # volume_yesterday = get_volume_product_on_date(product_barcode, yesterday, store_id, transactions)
-            # volume_2days_ago = get_volume_product_on_date(product_barcode, two_days_ago, store_id, transactions)
-            # weather_yesterday = get_weather_on_date(yesterday, meteo_day, store_id).head(n=1)
+            volume_yesterday = get_volume_product_on_date(product_barcode, yesterday, store_id, transactions)
+            volume_2days_ago = get_volume_product_on_date(product_barcode, two_days_ago, store_id, transactions)
+            volume_one_week_ago = get_volume_product_on_date(product_barcode, one_week_ago, store_id, transactions)
 
 
-            tmp = [weather['TEMPERATURE_VALUE_MIN'], weather['TEMPERATURE_VALUE_MAX'],
-                   weather['PRECIPITATION_VALUE'], weather['SUNSHINE_DURATION'],
-                   weather['SNOW_DEPTH'], day_type, volume["price"], volume["weight"]]
+            volume_price_yesterday = 0
+            volume_weight_yesterday = 0
+            if volume_yesterday is not None:
+                volume_price_yesterday = volume_yesterday["price"]
+                volume_weight_yesterday = volume_yesterday["weight"]
+
+            volume_price_2days_ago = 0
+            volume_weight_2days_ago = 0
+            if volume_2days_ago is not None:
+                volume_price_2days_ago = volume_2days_ago["price"]
+                volume_weight_2days_ago = volume_2days_ago["weight"]
+
+            volume_price_one_week_ago = 0
+            volume_weight_one_week_ago = 0
+            if volume_one_week_ago is not None:
+                volume_price_one_week_ago = volume_one_week_ago["price"]
+                volume_weight_one_week_ago = volume_one_week_ago["weight"]
+
+
+            #if volume_yesterday is not None:
+            #    volume_price_yesterday = volume_yesterday["price"]
+            #    volume_weight_yesterday = volume_yesterday["weight"]
+
+
+
+
+            # Using historic weather data
+            weather_yesterday = get_weather_on_date(yesterday, meteo_day, store_id).head(n=1)
+            temperature_min_yesterday = 0
+            temperature_max_yesterday = 0
+            if not weather_yesterday.empty:
+                temperature_min_yesterday = weather_yesterday['TEMPERATURE_VALUE_MIN'].values[0]
+                temperature_max_yesterday = weather_yesterday['TEMPERATURE_VALUE_MIN'].values[0]
+
+
+            #tmp = [weather['TEMPERATURE_VALUE_MIN'].values[0], weather['TEMPERATURE_VALUE_MAX'].values[0],
+            #       weather['PRECIPITATION_VALUE'].values[0], weather['SUNSHINE_DURATION'].values[0],
+            #       weather['SNOW_DEPTH'].values[0], day_type, volume["price"], volume["weight"]]
+
+            tmp = [weather['TEMPERATURE_VALUE_MIN'].values[0], weather['TEMPERATURE_VALUE_MAX'].values[0],
+                   day_type, volume["price"], volume_price_yesterday,volume_weight_yesterday,
+                   volume_price_2days_ago, volume_weight_2days_ago,
+                   volume_price_one_week_ago, volume_weight_one_week_ago, temperature_min_yesterday,
+                   temperature_max_yesterday,day_type_yesterday, day_type_2days_ago,
+                   volume["weight"]]
 
             all_data_first_level.append(tmp)
+
+            break
 
 
     return all_data_first_level
 
 
+
+def get_preprocess_data():
+
+    # Reading transaction
+    trans = read_transactions()
+
+    trans = trans.dropna()
+
+    # Reading meteo data
+    md = read_meteo_day()
+
+
+    return np.asarray(generate_training_testing_dataset(settings.DIJON_ID, trans, md), dtype=np.float)
 
 
 

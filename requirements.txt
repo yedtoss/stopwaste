@@ -1,3 +1,5 @@
 workalendar
 numpy
 pandas
+scikit-learn
+xgboost
