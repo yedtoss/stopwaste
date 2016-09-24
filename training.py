@@ -101,7 +101,7 @@ def run_exp4(algorithms, X_test, y_test):
         p = (1-gamma)*W*predictions/np.sum(W) + gamma/K
 
         # Pick one arm and receives rewards
-        action = np.random.choice(range(K), p=p)
+        action = np.random.choice(range(K), p=p/np.sum(p))
         reward = 1-compute_relative_absolute_error([y_test[round]], predictions[action])
         error += 1-reward
 
