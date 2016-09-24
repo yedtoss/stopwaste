@@ -4,6 +4,9 @@ __author__ = 'yedtoss'
 import pandas as pd
 import numpy as np
 import settings
+from workalendar.europe import France
+import datetime
+
 import sortedcontainers as sc
 
 
@@ -83,7 +86,60 @@ def get_volume_product_on_date(product_barcode, date, store_id, transactions):
                         (transactions['TRX_DATETIME'] >= pd.to_datetime(date).date())
                         & (transactions['TRX_DATETIME'] < (pd.to_datetime(date) + pd.DateOffset(1)))]
 
-    return np.sum(transactions_day['SAL_AMT_WTAX'])
+    return {"price": np.sum(transactions_day['SAL_AMT_WTAX']),
+            "weight": np.sum(transactions_day['SAL_UNIT_QTY_WEIGHT'])}
+
+
+
+def generate_day_type(date):
+    """
+    This function convert a date to the corresponding type of the day
+    (working day/holiday/Mon-Sun)
+    """
+    cal = France()
+
+    if cal.is_holiday(date):
+        # If Mon-Friday
+        if date.weekday() in range(5):
+            return 0
+        else:
+            return 1
+    else:
+        if date.weekday() in range(5):
+            return 1
+        else:
+            return 0
+
+
+
+def generate_weather_conditions(temperature, temp_type):
+    """
+    """
+
+    if temp_type == "MIN" or temperature < 5:
+        if temperature > 10:
+            return 0
+        elif temperature >= 0:
+            return (10.-temperature)/10.
+        else:
+            return 1
+
+    elif temp_type == "AVG":
+
+        if temperature > 25:
+            return 0
+        elif temperature >= 15:
+            return (25.-temperature)/(25.-15)
+        elif temperature >= 5:
+            return (temperature-5.)/(15-5.)
+
+    elif temp_type == "MAX":
+        if temperature > 40:
+            return 1
+        elif temperature >= 20:
+            return (temperature-20)/(40.-20)
+        else:
+            return 0
 
 
 def generate_training_testing_dataset(store_id, transactions, meteo_day):
@@ -104,17 +160,42 @@ def generate_training_testing_dataset(store_id, transactions, meteo_day):
 
     all_data_first_level = []
     # For each day and for each product
+    for day in xrange(num_days):
 
-    for date in xrange(num_days):
+        print(day)
+
+        date = min_date + pd.DateOffset(day)
+
+        # Get the weather of the date
+        weather = get_weather_on_date(date, meteo_day, store_id).head(n=1)
         for product_barcode in products_barcode:
-            tmp = get_weather_on_date(date, meteo_day, store_id)
-            get_volume_product_on_date(product_barcode, date, store_id, transactions)
+
+            # Get the volume
+            volume = get_volume_product_on_date(product_barcode, date, store_id, transactions)
+            day_type = generate_day_type(date)
 
 
 
+            # Generating complex features based on the simpler one
+
+            # yesterday = date - pd.DateOffset(1)
+            # two_days_ago = date - pd.DateOffset(2)
+            # day_type_yesterday = generate_day_type(yesterday)
+            # day_type_2days_ago = generate_day_type(two_days_ago)
+            #
+            # volume_yesterday = get_volume_product_on_date(product_barcode, yesterday, store_id, transactions)
+            # volume_2days_ago = get_volume_product_on_date(product_barcode, two_days_ago, store_id, transactions)
+            # weather_yesterday = get_weather_on_date(yesterday, meteo_day, store_id).head(n=1)
 
 
+            tmp = [weather['TEMPERATURE_VALUE_MIN'], weather['TEMPERATURE_VALUE_MAX'],
+                   weather['PRECIPITATION_VALUE'], weather['SUNSHINE_DURATION'],
+                   weather['SNOW_DEPTH'], day_type, volume["price"], volume["weight"]]
 
+            all_data_first_level.append(tmp)
+
+
+    return all_data_first_level
 
 
 
